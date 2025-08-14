@@ -11,7 +11,6 @@
 
 #### Notes:
 
-Improve prompt
 Optimise the actual LLM calls even further
 Switch to React?
 creating jira releases
