@@ -12,13 +12,14 @@ from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePas
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from AgentTools import MCPToolHandler
-from backend.prompts import router_system_prompt, worker_system_prompt
+from prompts import router_system_prompt, worker_system_prompt
 
 # -----------------------------
 
@@ -221,12 +222,11 @@ class MCPAgentServer:
                         )
 
                         # ----- Build LLMs -----
-                        router_llm = ChatOpenAI(model="gpt-5-nano-2025-08-07")
+                        router_llm = ChatGoogleGenerativeAI(
+                            model="gemini-2.5-flash-lite", temperature=0
+                        )
                         fast_llm = ChatOpenAI(model="gpt-4.1-2025-04-14", temperature=0)
                         smart_llm = ChatOpenAI(model="o4-mini-2025-04-16")
-                        # fast_llm = ChatOpenAI(
-                        # model="gpt-4o-mini-2024-07-18", temperature=0
-                        # )
 
                         # ----- Create prompt for the router -----
                         router_prompt = ChatPromptTemplate.from_messages(

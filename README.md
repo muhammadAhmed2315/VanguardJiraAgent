@@ -11,19 +11,30 @@
 
 #### Notes:
 
-Is it possible to dynamically switch models in LangChain?
+TODO:
 
-- Make dynamically switching LLMs for more complex calls (e.g., if user wants to
-  identify any dependencies just by reading all of the tickets)
-- This is possible using the answer-or-escalate call here: https://chatgpt.com/c/689e0981-e3ac-8323-b0ab-469d47cedc06
-
-Optimise the actual LLM calls even further
-Switch to React?
+- Architecture diagram (use draw.io)
+- Document approach, hurdles, next steps, and how to setup the project
+- The tech stack, and your reasoning for each choice
 
 creating jira releases
 create/close sprints
 summarise all epics in progress
 summarise sprint stats
 check dependencies + blocks for tickets, come up with an order for the tickets in an epic??
-architecture diagram, draw.io
-approach, hurdles, next steps, how to setup
+
+#### Capabilities:
+
+- Tickets:
+  - Read tickets
+  - Create tickets
+  - Modify ticket story points, assignees
+  - Read ticket comments
+  - Add ticket comments
+
+#### Limitations:
+
+- Tickets:
+  - Delete tickets
+  - Modify existing comments
+  - Delete comments

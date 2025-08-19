@@ -1,6 +1,5 @@
 import requests
 import streamlit as st
-from html import escape
 
 st.set_page_config(page_title="Jira Helper Bot")
 
