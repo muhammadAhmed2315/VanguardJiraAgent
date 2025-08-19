@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 
+from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePassthrough
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -17,6 +18,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from AgentTools import MCPToolHandler
+from backend.prompts import router_system_prompt, worker_system_prompt
 
 # -----------------------------
 
@@ -195,7 +197,7 @@ class MCPAgentServer:
         backoff = 1
         while not self._stop_evt.is_set():
             try:
-                # 1) Establish MCP connection
+                # ----- Establish connection with MCP server -----
                 server = StdioServerParameters(
                     command="npx",
                     args=["-y", "mcp-remote", self.remote_url],
@@ -203,14 +205,14 @@ class MCPAgentServer:
                 )
                 async with stdio_client(server) as (read, write):
                     async with ClientSession(read, write) as session:
-                        # 2) Prime tools + context (done once per successful connection)
+                        # ----- Fetch tools available on Atlassian MCP server -----
                         tool_meta = await session.list_tools()
                         tool_meta.tools = [
                             t for t in tool_meta.tools if "Confluence" not in t.name
                         ]
                         tool_docs = tool_meta.model_dump_json()
 
-                        # Make manual MCP calls to get relevant information from MCP
+                        # ----- Prefetch data agent will need -----
                         resources = await manual_mcp_call(
                             session, "getAccessibleAtlassianResources", {}
                         )
@@ -218,52 +220,26 @@ class MCPAgentServer:
                             session, "atlassianUserInfo", {}
                         )
 
-                        # 3) Build LLM + tools + agent
-                        llm = ChatOpenAI(model="gpt-4.1-2025-04-14", temperature=0)
+                        # ----- Build LLMs -----
+                        router_llm = ChatOpenAI(model="gpt-5-nano-2025-08-07")
+                        fast_llm = ChatOpenAI(model="gpt-4.1-2025-04-14", temperature=0)
+                        smart_llm = ChatOpenAI(model="o4-mini-2025-04-16")
+                        # fast_llm = ChatOpenAI(
+                        # model="gpt-4o-mini-2024-07-18", temperature=0
+                        # )
 
-                        system = """
-                            # Identity
-
-                            - You are a Jira assistant that can operate Jira using MCP tools.
-                            - As general guidelines, you should aim to ensure accuracy, efficiency, and minimal user requirements Only ask for clarifications from the user as a last resort.
-
-                            # Instructions
-
-                            ## Handling ticket IDs
-                            - Jira ticket IDs are always in the format <PROJECT_KEY>-<NUMBER>
-                            - However, the user may input them with a missing hyphen (e.g., <PROJECT_KEY><NUMBER>)
-                            - Since <PROJECT_KEY> may or may not end in a number, so you should always try inferring the ticket ID, but if you can't fnd the correct ticket, then ask the user for clarification.
-
-
-                            ## Handling ticket comments
-                            - When outputting comments for a specific ticket, output each comment in the following format:
-                              - <author> (<timestamp converted to X days/hours/minutes/seconds ago>): <comment>
-                            - Each comment should be separate dwith a new line
-                            - Unless explicitly specified by the user, comments should always be ordered with the most recent first.
-
-                            # Context
-                            - Here are the MCP tools that are available to you and their JSON schemas:
-                            <available_mcp_tools>
-                            {tool_docs}
-                            </available_mcp_tools>
-
-                            - Here is the result of calling the MCP command `getAccessibleAtlassianResources`: 
-                            <get_accessible_atlassian_resources_result>
-                            {resources}
-                            </get_accessible_atlassian_resources_result>
-
-                            - Here is the result of calling the MCP command `atlassianUserInfo`:
-                            <atlassian_user_info_results>
-                            {user_info}
-                            </atlassian_user_info_results>
-
-                            - Do not attempt to discover tools again; call `mcp_call` directly
-                            - When calling `mcp_call`, provide the tool name as the `tool` parameter and arguments as the `arguments` parameter.
-                            """
-
-                        prompt = ChatPromptTemplate.from_messages(
+                        # ----- Create prompt for the router -----
+                        router_prompt = ChatPromptTemplate.from_messages(
                             [
-                                ("system", system),
+                                ("system", router_system_prompt),
+                                ("human", "{input}"),
+                            ]
+                        )
+
+                        # ----- Create prompt for workers -----
+                        worker_prompt = ChatPromptTemplate.from_messages(
+                            [
+                                ("system", worker_system_prompt),
                                 MessagesPlaceholder("chat_history"),
                                 ("human", "{input}"),
                                 MessagesPlaceholder("agent_scratchpad"),
@@ -274,8 +250,8 @@ class MCPAgentServer:
                             user_info=user_info,
                         )
 
+                        # ----- Fetch tools available to the agent -----
                         handler = MCPToolHandler(session)
-
                         agent_tools = handler.get_all_tools()
 
                         # agent_tools = [
@@ -283,12 +259,46 @@ class MCPAgentServer:
                         # handler.get_list_tools_tool(),
                         # ]
 
-                        agent = create_tool_calling_agent(llm, agent_tools, prompt)
-                        executor = AgentExecutor(
-                            agent=agent,
+                        # ----- Chain + Executor for fast worker -----
+                        fast_agent = create_tool_calling_agent(
+                            fast_llm, agent_tools, worker_prompt
+                        )
+                        fast_executor = AgentExecutor(
+                            agent=fast_agent,
                             tools=agent_tools,
                             verbose=True,
                             handle_parsing_errors=True,
+                        )
+
+                        # ----- Chain + Executor for fast worker -----
+                        smart_agent = create_tool_calling_agent(
+                            smart_llm, agent_tools, worker_prompt
+                        )
+                        smart_executor = AgentExecutor(
+                            agent=smart_agent,
+                            tools=agent_tools,
+                            verbose=True,
+                            handle_parsing_errors=True,
+                        )
+
+                        # ----- Chain for router LLM -----
+                        router_chain = router_prompt | router_llm
+
+                        # ----- Final chain that will be invoked -----
+                        router_then_model = RunnablePassthrough.assign(
+                            route=router_chain
+                            | RunnableLambda(
+                                lambda r: (
+                                    "smart"
+                                    if "smart" in r.text().strip().lower()
+                                    else "fast"
+                                )
+                            )
+                        ) | RunnableBranch(
+                            # The branch receives the dictionary and checks the 'route' key.
+                            # It then passes the entire dictionary to the chosen EXECUTOR.
+                            (lambda x: x["route"] == "smart", smart_executor),
+                            fast_executor,  # This is the default branch if the condition is not met
                         )
 
                         # Signal ready after the first successful build
@@ -307,7 +317,7 @@ class MCPAgentServer:
                                 continue
 
                             try:
-                                result = await executor.ainvoke(
+                                result = await router_then_model.ainvoke(
                                     {"input": user_input, "chat_history": history_msgs}
                                 )
                                 # result is dict with "output" and intermediate steps if verbose
@@ -324,11 +334,15 @@ class MCPAgentServer:
                                 self._queue.task_done()
 
             except Exception as e:
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                print(f"!!! RUNNER LOOP FAILED, WILL RETRY: {e}")
+                import traceback
+
+                traceback.print_exc()
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
                 # Connection or setup failed — backoff and retry
-                # (Any pending submit() calls will remain queued until we reconnect)
                 if not self._ready_evt.is_set():
-                    # If we haven't been ready yet, still let callers know soon
-                    # but we keep trying to connect.
                     pass
                 time.sleep(min(backoff, 10))
                 backoff = min(backoff * 2, 30)
