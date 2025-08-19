@@ -16,8 +16,7 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-# --- your existing helpers ---
-from AgentTools import get_call_tool_tool, get_list_tools_tool
+from AgentTools import MCPToolHandler
 
 # -----------------------------
 
@@ -275,10 +274,14 @@ class MCPAgentServer:
                             user_info=user_info,
                         )
 
-                        agent_tools = [
-                            await get_list_tools_tool(session),
-                            await get_call_tool_tool(session),
-                        ]
+                        handler = MCPToolHandler(session)
+
+                        agent_tools = handler.get_all_tools()
+
+                        # agent_tools = [
+                        # handler.get_call_tool_tool(),
+                        # handler.get_list_tools_tool(),
+                        # ]
 
                         agent = create_tool_calling_agent(llm, agent_tools, prompt)
                         executor = AgentExecutor(
