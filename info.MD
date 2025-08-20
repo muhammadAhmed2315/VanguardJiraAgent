@@ -22,19 +22,3 @@ create/close sprints
 summarise all epics in progress
 summarise sprint stats
 check dependencies + blocks for tickets, come up with an order for the tickets in an epic??
-
-#### Capabilities:
-
-- Tickets:
-  - Read tickets
-  - Create tickets
-  - Modify ticket story points, assignees
-  - Read ticket comments
-  - Add ticket comments
-
-#### Limitations:
-
-- Tickets:
-  - Delete tickets
-  - Modify existing comments
-  - Delete comments
