@@ -225,8 +225,13 @@ class MCPAgentServer:
                         router_llm = ChatGoogleGenerativeAI(
                             model="gemini-2.5-flash-lite", temperature=0
                         )
-                        fast_llm = ChatOpenAI(model="gpt-4.1-2025-04-14", temperature=0)
-                        smart_llm = ChatOpenAI(model="o4-mini-2025-04-16")
+                        fast_llm = ChatGoogleGenerativeAI(
+                            model="gemini-2.5-flash", temperature=0, thinking_budget=-1
+                        )
+                        smart_llm = ChatOpenAI(
+                            model="gpt-4.1-2025-04-14", temperature=0
+                        )
+                        complex_llm = ChatOpenAI(model="o4-mini-2025-04-16")
 
                         # ----- Create prompt for the router -----
                         router_prompt = ChatPromptTemplate.from_messages(
@@ -270,12 +275,23 @@ class MCPAgentServer:
                             handle_parsing_errors=True,
                         )
 
-                        # ----- Chain + Executor for fast worker -----
+                        # ----- Chain + Executor for smart worker -----
                         smart_agent = create_tool_calling_agent(
                             smart_llm, agent_tools, worker_prompt
                         )
                         smart_executor = AgentExecutor(
                             agent=smart_agent,
+                            tools=agent_tools,
+                            verbose=True,
+                            handle_parsing_errors=True,
+                        )
+
+                        # ----- Chain + Executor for smart worker -----
+                        complex_agent = create_tool_calling_agent(
+                            complex_llm, agent_tools, worker_prompt
+                        )
+                        complex_executor = AgentExecutor(
+                            agent=complex_agent,
                             tools=agent_tools,
                             verbose=True,
                             handle_parsing_errors=True,
@@ -289,15 +305,20 @@ class MCPAgentServer:
                             route=router_chain
                             | RunnableLambda(
                                 lambda r: (
-                                    "smart"
-                                    if "smart" in r.text().strip().lower()
-                                    else "fast"
+                                    (
+                                        lambda rt: (
+                                            "super"
+                                            if "super" in rt
+                                            else "smart" if "smart" in rt else "fast"
+                                        )
+                                    )(r.text().strip().lower())
                                 )
                             )
                         ) | RunnableBranch(
                             # The branch receives the dictionary and checks the 'route' key.
                             # It then passes the entire dictionary to the chosen EXECUTOR.
                             (lambda x: x["route"] == "smart", smart_executor),
+                            (lambda x: x["route"] == "complex", complex_executor),
                             fast_executor,  # This is the default branch if the condition is not met
                         )
 
