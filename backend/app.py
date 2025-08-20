@@ -208,9 +208,6 @@ class MCPAgentServer:
                     async with ClientSession(read, write) as session:
                         # ----- Fetch tools available on Atlassian MCP server -----
                         tool_meta = await session.list_tools()
-                        tool_meta.tools = [
-                            t for t in tool_meta.tools if "Confluence" not in t.name
-                        ]
                         tool_docs = tool_meta.model_dump_json()
 
                         # ----- Prefetch data agent will need -----

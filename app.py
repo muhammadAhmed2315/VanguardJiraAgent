@@ -53,5 +53,7 @@ if send:
 # --- render chat at the top ---
 with chat_box:
     for human, ai in zip(st.session_state.human_history, st.session_state.ai_history):
-        st.chat_message("human").text(human)
-        st.chat_message("ai").text(ai)
+        with st.chat_message("human"):
+            st.markdown(human)
+        with st.chat_message("ai"):
+            st.markdown(ai)

@@ -24,13 +24,12 @@ class MCPToolHandler:
 
     async def list_tools(self) -> str:
         """
-        Lists available MCP tools and their schemas, excluding Confluence tools.
+        Lists available MCP tools and their schemas
 
         Returns:
             str: A JSON string representing the available tools.
         """
         meta = await self.session.list_tools()
-        meta.tools = [tool for tool in meta.tools if "Confluence" not in tool.name]
         return meta.model_dump_json()
 
     async def call_tool(self, tool: str, arguments: Dict[str, Any] = None) -> str:
