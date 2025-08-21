@@ -9,6 +9,19 @@ if "chat_history" not in st.session_state:
     st.session_state.human_history = []
     st.session_state.ai_history = []
 
+if "disabled_submit_btn" not in st.session_state:
+    st.session_state.disabled_submit_btn = False
+
+
+def disable_submit_btn():
+    st.session_state.disabled_submit_btn = True
+
+
+def enable_submit_btn():
+    st.session_state.disabled_submit_btn = False
+    st.rerun()
+
+
 st.header("Jira Helper Bot")
 
 # Reserve space at the top for chat messages
@@ -16,8 +29,16 @@ chat_box = st.container()
 
 # --- input area (prompt above button) ---
 with st.form("prompt_form", clear_on_submit=True):
-    prompt = st.text_area("Prompt", placeholder="Enter your prompt here…")
-    send = st.form_submit_button("Send")
+    prompt = st.text_area(
+        "Prompt",
+        placeholder="Enter your prompt here…",
+    )
+    send = st.form_submit_button(
+        "Send",
+        on_click=disable_submit_btn,
+        disabled=st.session_state.disabled_submit_btn,
+    )
+
 
 # --- handle submit BEFORE rendering chat, so new messages show up ---
 if send:
@@ -34,8 +55,6 @@ if send:
                 )
                 # Prefer JSON if available; fall back to raw text
                 try:
-                    raw = r.json()
-                    print(raw)
                     out = r.json().get("output", r.text)
                 except ValueError:
                     out = r.text
@@ -51,6 +70,8 @@ if send:
                 st.session_state.chat_history.append(
                     {"role": "ai", "content": f"Request failed: {e}"}
                 )
+            finally:
+                enable_submit_btn()
 
 # --- render chat at the top ---
 with chat_box:
@@ -59,17 +80,3 @@ with chat_box:
             st.markdown(human)
         with st.chat_message("ai"):
             st.markdown(ai)
-
-
-# TODO:
-# - Finetune the worker prompt for finding Confluence pages
-# - Stream the responses in
-
-
-# with st.chat_message("human"):
-# st.markdown(human)
-# with st.chat_message("ai"):
-# st.markdown(ai)
-
-# st.chat_message("human").text(human)
-# st.chat_message("ai").text(ai)
