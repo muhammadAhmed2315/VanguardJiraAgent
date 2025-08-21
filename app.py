@@ -59,3 +59,17 @@ with chat_box:
             st.markdown(human)
         with st.chat_message("ai"):
             st.markdown(ai)
+
+
+# TODO:
+# - Finetune the worker prompt for finding Confluence pages
+# - Stream the responses in
+
+
+# with st.chat_message("human"):
+# st.markdown(human)
+# with st.chat_message("ai"):
+# st.markdown(ai)
+
+# st.chat_message("human").text(human)
+# st.chat_message("ai").text(ai)

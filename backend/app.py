@@ -1,4 +1,3 @@
-# app.py
 import json
 import time
 import asyncio
@@ -8,10 +7,10 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 
-from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePassthrough
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePassthrough
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -20,12 +19,15 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from AgentTools import MCPToolHandler
 from prompts import router_system_prompt, worker_system_prompt
+from utility import replace_iso8601_with_relative
 
 # -----------------------------
 
 load_dotenv()
 
 REMOTE_URL = "https://mcp.atlassian.com/v1/sse"
+
+# -----------------------------
 
 
 async def manual_mcp_call(
@@ -438,6 +440,7 @@ def mcp():
     status = 200 if result.get("ok", False) else 500
 
     result = {"output": result["output"]["output"]}
+    result["output"] = replace_iso8601_with_relative(result["output"])
 
     return jsonify(result), status
 
