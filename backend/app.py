@@ -347,15 +347,31 @@ class MCPAgentServer:
                                 continue
 
                             try:
-                                result = await router_then_model.ainvoke(
-                                    {"input": user_input, "chat_history": history_msgs}
+                                final_output = (
+                                    None  # will hold the agent’s structured result
                                 )
+
+                                async for e in router_then_model.astream_events(
+                                    {"input": user_input, "chat_history": history_msgs},
+                                    version="v1",
+                                ):
+                                    ev = e["event"]
+
+                                    if ev == "on_tool_start":
+                                        print(
+                                            f"[tool start] {e['name']} args={e['data'].get('input')}"
+                                        )
+
+                                    elif ev == "on_chain_end":
+                                        # structured agent result is here
+                                        final_output = e["data"]
+
                                 # result is dict with "output" and intermediate steps if verbose
                                 result_fut.set_result(
                                     {
                                         "ok": True,
-                                        "output": result.get("output", ""),
-                                        "raw": result,
+                                        "output": final_output.get("output", ""),
+                                        "raw": final_output,
                                     }
                                 )
                             except Exception as e:
@@ -412,9 +428,6 @@ def mcp():
     """
     data = request.get_json(force=True, silent=True) or {}
 
-    print("INPUT DATA")
-    print(data)
-
     user_input: str = data.get("input", "")
     history: List[Dict[str, str]] = data.get("history", [])
 
@@ -424,7 +437,7 @@ def mcp():
     result = mcp_agent.submit(user_input, history)
     status = 200 if result.get("ok", False) else 500
 
-    result = {"output": result["output"]}
+    result = {"output": result["output"]["output"]}
 
     return jsonify(result), status
 
