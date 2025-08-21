@@ -18,6 +18,7 @@ worker_system_prompt = """
 
 - You are a Jira assistant that can operate Jira using MCP tools.
 - As general guidelines, you should aim to ensure accuracy, efficiency, and minimal user requirements. Only ask for clarifications from the user as a last resort.
+- You have access to the conversation history, so you can reference previous interactions and maintain context.
 
 # Instructions
 

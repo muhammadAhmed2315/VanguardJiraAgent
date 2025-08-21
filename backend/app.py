@@ -113,6 +113,18 @@ class MCPAgentServer:
         """
         Synchronous call from Flask: enqueues a task and waits for the result.
         chat_history is a list of {"role": "human"/"ai", "content": "..."}
+
+        Return Dict Format:
+        {
+          "ok": True, # response successful?
+          "output": "The ticket DE-7 has been successfully moved to 'Done'.", # final LLM output message
+          "raw": {
+              "input": "move DE-3 to DONE", # user prompt
+              "chat_history": [HumanMessage(...), AIMessage(...), ...], # chat history
+              "route": "fast", # model chosen by router LLM
+              "output": "The ticket DE-7 has been successfully moved to 'Done'.", # final LLM output message
+          }
+        }
         """
         if not self._loop or not self._queue:
             return {"error": "MCP agent loop not started"}
@@ -268,7 +280,7 @@ class MCPAgentServer:
                         fast_executor = AgentExecutor(
                             agent=fast_agent,
                             tools=agent_tools,
-                            verbose=True,
+                            verbose=False,
                             handle_parsing_errors=True,
                         )
 
@@ -279,7 +291,7 @@ class MCPAgentServer:
                         smart_executor = AgentExecutor(
                             agent=smart_agent,
                             tools=agent_tools,
-                            verbose=True,
+                            verbose=False,
                             handle_parsing_errors=True,
                         )
 
@@ -290,7 +302,7 @@ class MCPAgentServer:
                         complex_executor = AgentExecutor(
                             agent=complex_agent,
                             tools=agent_tools,
-                            verbose=True,
+                            verbose=False,
                             handle_parsing_errors=True,
                         )
 
@@ -387,13 +399,22 @@ def health():
 @app.route("/mcp", methods=["POST"])
 def mcp():
     """
-    POST JSON:
+    INPUT JSON FORMAT:
     {
-      "input": "move DE-3 to Done",
-      "history": [{"role":"human","content":"..."}, {"role":"ai","content":"..."}]
+      "input": "move DE-3 to Done", # user prompt
+      "history": [{"role":"human","content":"..."}, {"role":"ai","content":"..."}], # chat history
+    }
+
+    RETURN JSON FORMAT:
+    {
+      "output": "The ticket DE-3 has been successfully moved to 'Done'.", # final LLM output
     }
     """
     data = request.get_json(force=True, silent=True) or {}
+
+    print("INPUT DATA")
+    print(data)
+
     user_input: str = data.get("input", "")
     history: List[Dict[str, str]] = data.get("history", [])
 
@@ -403,17 +424,7 @@ def mcp():
     result = mcp_agent.submit(user_input, history)
     status = 200 if result.get("ok", False) else 500
 
-    print("*" * 50)
-    print(result)
-    print("*" * 50)
-
-    temp = []
-    for message in result["raw"]["chat_history"]:
-        if type(message) == AIMessage:
-            temp.append({"role": "ai", "content": message.content})
-        elif type(message) == HumanMessage:
-            temp.append({"role": "human", "content": message.content})
-    result["raw"]["chat_history"] = temp
+    result = {"output": result["output"]}
 
     return jsonify(result), status
 
@@ -421,6 +432,3 @@ def mcp():
 if __name__ == "__main__":
     # Run Flask (WSGI). Use a prod server (gunicorn/uwsgi) in production.
     app.run(host="0.0.0.0", port=8000, debug=False)
-
-
-# user prompts the fr

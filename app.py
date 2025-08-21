@@ -34,6 +34,8 @@ if send:
                 )
                 # Prefer JSON if available; fall back to raw text
                 try:
+                    raw = r.json()
+                    print(raw)
                     out = r.json().get("output", r.text)
                 except ValueError:
                     out = r.text
