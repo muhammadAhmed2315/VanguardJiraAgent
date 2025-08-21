@@ -7,7 +7,7 @@ st.markdown(
     """
     <style>
     [data-testid="stHeader"] {
-        background-color: #c3002a;
+        background-color: #96151d;
     }
     [data-testid="stHeader"] * {
         color: white !important;
@@ -19,7 +19,7 @@ st.markdown(
 
 
 # --- page config ---
-avatar_img = Image.open("./backend/assets/vanguard.jpg")
+ai_icon = Image.open("./backend/assets/vanguard.jpg")
 st.set_page_config(page_title="Vanguard ")
 
 # --- state ---
@@ -96,7 +96,7 @@ if send:
 # --- render chat at the top ---
 with chat_box:
     for human, ai in zip(st.session_state.human_history, st.session_state.ai_history):
-        with st.chat_message("human"):
+        with st.chat_message("human", avatar="👤"):
             st.markdown(human)
-        with st.chat_message("ai", avatar=avatar_img):
+        with st.chat_message("ai", avatar=ai_icon):
             st.markdown(ai)
