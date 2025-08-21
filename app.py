@@ -1,7 +1,26 @@
 import requests
+from PIL import Image
 import streamlit as st
 
-st.set_page_config(page_title="Jira Helper Bot")
+
+st.markdown(
+    """
+    <style>
+    [data-testid="stHeader"] {
+        background-color: #c3002a;
+    }
+    [data-testid="stHeader"] * {
+        color: white !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# --- page config ---
+avatar_img = Image.open("./backend/assets/vanguard.jpg")
+st.set_page_config(page_title="Vanguard ")
 
 # --- state ---
 if "chat_history" not in st.session_state:
@@ -22,7 +41,7 @@ def enable_submit_btn():
     st.rerun()
 
 
-st.header("Jira Helper Bot")
+st.header("Vanguard Jira Agent")
 
 # Reserve space at the top for chat messages
 chat_box = st.container()
@@ -38,6 +57,7 @@ with st.form("prompt_form", clear_on_submit=True):
         on_click=disable_submit_btn,
         disabled=st.session_state.disabled_submit_btn,
     )
+    # cancel = st.form_submit_button("Cancel Request", type="primary")
 
 
 # --- handle submit BEFORE rendering chat, so new messages show up ---
@@ -78,5 +98,5 @@ with chat_box:
     for human, ai in zip(st.session_state.human_history, st.session_state.ai_history):
         with st.chat_message("human"):
             st.markdown(human)
-        with st.chat_message("ai"):
+        with st.chat_message("ai", avatar=avatar_img):
             st.markdown(ai)
