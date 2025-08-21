@@ -304,8 +304,8 @@ class MCPAgentServer:
                                 lambda r: (
                                     (
                                         lambda rt: (
-                                            "super"
-                                            if "super" in rt
+                                            "complex"
+                                            if "complex" in rt
                                             else "smart" if "smart" in rt else "fast"
                                         )
                                     )(r.text().strip().lower())

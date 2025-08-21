@@ -16,7 +16,7 @@ chat_box = st.container()
 
 # --- input area (prompt above button) ---
 with st.form("prompt_form", clear_on_submit=True):
-    prompt = st.text_input("Prompt", placeholder="Enter your prompt here…")
+    prompt = st.text_area("Prompt", placeholder="Enter your prompt here…")
     send = st.form_submit_button("Send")
 
 # --- handle submit BEFORE rendering chat, so new messages show up ---
