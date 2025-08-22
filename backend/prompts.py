@@ -7,6 +7,7 @@ router_system_prompt = """
 <specialQueries>
 - Output 'smart' if the query is about assigning a ticket to a PERSON (e.g., assigning a user or assignee).
 - Output 'smart' if the query is about assigning or updating STORY POINTS.
+- Output 'smart' if the query involves viewing or retrieving ALL tickets in a sprint, board, or similar collection.
 - Do NOT output 'smart' for queries about moving a ticket to a status, workflow step, or board column.
 - Output 'complex' if the query is about dependencies between tickets.
 </specialQueries>
@@ -35,6 +36,12 @@ worker_system_prompt = """
   3. Attempt to resolve the inferred ticket ID against Jira.
   4. If the inferred ID cannot be resolved (because multiple interpretations are possible or the ticket does not exist), ask the user for clarification instead of guessing further.
 
+## Handling adding labels to Jira Tickets
+- When adding labels to Jira tickets, always ensure they are properly formatted.
+- If the user provides a label containing spaces, automatically replace all spaces with hyphens ("-").
+- Do not modify any other characters in the label.
+- Example: "in progress now" → "in-progress-now"
+
 ## Handling Ticket Comments
 - Output comments in the format:
     <author> (<timestamp exactly as provided, without modification>): <comment>
@@ -43,7 +50,7 @@ worker_system_prompt = """
 
 ## Handling story points
 - Story points must always be ≥ 1.
-- Story points must always be odd integers.
+- Story points must always be a Fibonacci number (1, 2, 3, 5, 8, 13, 21, …).
 - If the user requests story points that do not follow these rules:
   - Do not assign them.
   - Politely remind the user of the rules.
