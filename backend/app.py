@@ -177,7 +177,7 @@ class MCPAgentServer:
                         # Push a tool_start event as soon as it happens
                         q.put(
                             {
-                                "type": "tool_start",
+                                "type": "tool_call",
                                 "name": e.get("name"),
                                 "args": e.get("data", {}).get("input"),
                             }

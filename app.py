@@ -26,12 +26,13 @@ st.markdown(
         word-break: break-word;
     }
     .tool-badge {
-        background: #96151d;
+        background: #000000;
         color: white;
         border-radius: 4px;
         padding: 1px 6px;
         margin-right: 6px;
         font-size: 0.75rem;
+        font-weight: bold;
     }
     </style>
     """,
@@ -45,9 +46,9 @@ st.set_page_config(page_title="Vanguard ")
 
 # --- state variables ---
 if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-    st.session_state.human_history = []
-    st.session_state.ai_history = []
+    st.session_state.chat_history = []  # passed to the /mcp request endpoint
+    st.session_state.human_history = []  # needed for rendering previous chat history
+    st.session_state.ai_history = []  # needed for rendering previous chat history
 
 if "disabled_submit_btn" not in st.session_state:
     st.session_state.disabled_submit_btn = False
@@ -67,20 +68,22 @@ def enable_submit_btn():
 st.header("Vanguard Jira Agent")
 
 # --- layout anchors ---
-history_box = st.container()  # chat history at the top
-live_box = st.container()  # spinner + NDJSON stream just below history
-input_box = st.container()  # input area at the bottom
+history_box = st.container()  # container for rendering chat history
+live_box = st.container()  # container for rendering spinner + NDJSON stream
+input_box = st.container()  # container for rendering prompt input area
 
 
-def _format_tool_line(name, args_obj):
-    """Formats a 'tool_start' JSON object into the correct format for rendering onscreen"""
-    try:
-        args_pretty = json.dumps(
-            args_obj, ensure_ascii=False, separators=(",", ":"), indent=None
-        )
-    except Exception:
-        args_pretty = str(args_obj)
-    return f'<span class="tool-badge">tool_start</span><strong>{name or "unknown"}</strong> {args_pretty}'
+def _render_tool_call_json(obj):
+    """Formats a 'tool_call' JSON object into the correct format for rendering onscreen"""
+
+    if obj["name"] == "mcp_list_tools":
+        return '<div class="tool-line">Fetching a list of all available tools from the MCP server...</div>'
+
+    elif obj["name"] == "mcp_call":
+        tool_name = obj.get("args", {}).get("tool", "unknown tool")
+        tool_args = obj.get("args", {}).get("arguments", "unknown arguments")
+
+        return f'<div class="tool-line">Calling tool: <span class="tool-badge">{tool_name}</span><br>With arguments:<br>{tool_args}</div>'
 
 
 # --- render previous chat history ---
@@ -89,7 +92,12 @@ with history_box:
         with st.chat_message("human", avatar="👤"):
             st.markdown(human)
         with st.chat_message("ai", avatar=ai_icon):
-            st.markdown(ai)
+            with st.expander("Tool calls"):
+                st.markdown(
+                    "\n".join(ai["tool_calls"]),
+                    unsafe_allow_html=True,
+                )
+            st.markdown(ai["final_output"])
 
 # --- text input area ---
 with input_box.form("prompt_form", clear_on_submit=True):
@@ -109,14 +117,17 @@ if send:
         st.warning("Please enter a prompt.")
     else:
         st.session_state.human_history.append(prompt)
+        with history_box:
+            st.chat_message("human", avatar="👤").write(prompt)
 
+        # Render the live box while waiting for responses
         with live_box:
             with st.chat_message("ai", avatar=ai_icon):
-                final_text_placeholder = st.empty()  # where final model text will land
-                tools_box = st.container()  # rolling tool events
+                final_text_placeholder = st.empty()  # final output text
+                tools_box = st.expander("Tool calls", True)  # rolling tool events
                 with st.spinner("Thinking…"):
                     out = None
-                    tool_lines = []
+                    rendered_tool_calls = []
                     try:
                         r = requests.post(
                             "http://localhost:8000/mcp",
@@ -127,23 +138,25 @@ if send:
                             stream=True,
                             timeout=300,
                         )
+
                         # Iterate over NDJSON lines
                         for raw in r.iter_lines(decode_unicode=True):
                             if not raw:
                                 continue
+
                             # Each raw line is a JSON object
                             try:
-                                obj = json.loads(raw)
+                                obj = json.loads(raw)  # convert json string to a dict
                             except json.JSONDecodeError:
                                 # Non-JSON safety: show as-is in tools area
-                                tool_lines.append(
+                                rendered_tool_calls.append(
                                     f'<span class="tool-badge">raw</span>{raw}'
                                 )
                                 tools_box.markdown(
                                     "\n".join(
                                         [
                                             f'<div class="tool-line">{l}</div>'
-                                            for l in tool_lines
+                                            for l in rendered_tool_calls
                                         ]
                                     ),
                                     unsafe_allow_html=True,
@@ -151,50 +164,59 @@ if send:
                                 continue
 
                             et = obj.get("type")
-                            if et == "tool_start":
-                                line = _format_tool_line(
-                                    obj.get("name"), obj.get("args")
-                                )
-                                tool_lines.append(line)
+
+                            # if tool_call info returned
+                            if et == "tool_call":
+                                rendered_tool_calls.append(_render_tool_call_json(obj))
+                                print(rendered_tool_calls)
                                 tools_box.markdown(
-                                    "\n".join(
-                                        [
-                                            f'<div class="tool-line">{l}</div>'
-                                            for l in tool_lines
-                                        ]
-                                    ),
+                                    "\n".join(rendered_tool_calls),
                                     unsafe_allow_html=True,
                                 )
+
+                            # elif final model output returned
                             elif et == "final":
                                 out = obj.get("output", "")
                                 # Render final output immediately
                                 final_text_placeholder.markdown(
                                     out if out else "_(no output)_"
                                 )
+
+                            # elif error response returned
                             elif et == "error":
                                 out = f"Error: {obj.get('error','Unknown error')}"
                                 final_text_placeholder.markdown(out)
+
+                            # else if unknown event type returned
                             else:
+                                # TODO: Fix this
                                 # Unknown event type -> show in tools area for visibility
-                                tool_lines.append(
-                                    f'<span class="tool-badge">event</span>{json.dumps(obj, ensure_ascii=False)}'
-                                )
-                                tools_box.markdown(
-                                    "\n".join(
-                                        [
-                                            f'<div class="tool-line">{l}</div>'
-                                            for l in tool_lines
-                                        ]
-                                    ),
-                                    unsafe_allow_html=True,
-                                )
+                                # tool_lines.append(
+                                #     f'<span class="tool-badge">event</span>{json.dumps(obj, ensure_ascii=False)}'
+                                # )
+                                # tools_box.markdown(
+                                #     "\n".join(
+                                #         [
+                                #             f'<div class="tool-line">{l}</div>'
+                                #             for l in tool_lines
+                                #         ]
+                                #     ),
+                                #     unsafe_allow_html=True,
+                                # )
+                                pass
 
                         # Fallback if stream ended without a final message
                         if out is None:
                             out = "No final output produced."
 
                         # Update session state history variables
-                        st.session_state.ai_history.append(out)
+                        st.session_state.ai_history.append(
+                            {
+                                "final_output": out,
+                                "tool_calls": rendered_tool_calls,
+                            }
+                        )
+
                         st.session_state.chat_history.append(
                             {"role": "human", "content": prompt}
                         )
@@ -203,9 +225,15 @@ if send:
                         )
 
                     except requests.RequestException as e:
+                        # TODO: FIX THIS ONE
                         err = f"Request failed: {e}"
                         final_text_placeholder.markdown(err)
-                        st.session_state.ai_history.append(err)
+                        st.session_state.ai_history.append(
+                            {
+                                "final_output": err,
+                                "tool_calls": "N/A",
+                            }
+                        )
                         st.session_state.chat_history.append(
                             {"role": "ai", "content": err}
                         )
