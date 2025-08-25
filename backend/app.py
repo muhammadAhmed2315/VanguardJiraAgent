@@ -2,24 +2,25 @@ import json
 import time
 import asyncio
 import threading
-from typing import Any, Dict, List, Optional
+from queue import Queue, Empty
+from typing import Any, Dict, List, Optional, Iterator
 
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 
-from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp import ClientSession, StdioServerParameters
 
-from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePassthrough
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePassthrough
 
 from AgentTools import MCPToolHandler
-from prompts import router_system_prompt, worker_system_prompt
 from utility import replace_iso8601_with_relative
+from prompts import router_system_prompt, worker_system_prompt
 
 # ----- server setup -----
 
@@ -137,10 +138,79 @@ class MCPAgentServer:
         )
         return fut.result(timeout=120)
 
+    # NEW: streamed submit that yields JSON lines per event (no SSE)
+    def stream(
+        self, user_input: str, chat_history: List[Dict[str, str]] = None
+    ) -> Iterator[str]:
+        """
+        Stream events as NDJSON lines. Each tool start is emitted immediately:
+          {"type":"tool_start","name":"<tool name>","args":{...}}
+        The final LLM output is emitted as:
+          {"type":"final","output":"..."}
+        Errors are emitted as:
+          {"type":"error","error":"..."}
+        """
+        if not self._loop or not self._agent_chain:
+            yield json.dumps({"type": "error", "error": "MCP agent not ready"}) + "\n"
+            return
+
+        q: Queue = Queue()
+        SENTINEL = object()
+
+        async def _runner():
+            try:
+                # Convert history
+                history_msgs = []
+                for m in chat_history or []:
+                    if m.get("role") == "human":
+                        history_msgs.append(HumanMessage(content=m["content"]))
+                    elif m.get("role") == "ai":
+                        history_msgs.append(AIMessage(content=m["content"]))
+
+                final_output = None
+                async for e in self._agent_chain.astream_events(
+                    {"input": user_input, "chat_history": history_msgs},
+                    version="v1",
+                ):
+                    ev = e["event"]
+                    if ev == "on_tool_start":
+                        # Push a tool_start event as soon as it happens
+                        q.put(
+                            {
+                                "type": "tool_start",
+                                "name": e.get("name"),
+                                "args": e.get("data", {}).get("input"),
+                            }
+                        )
+                    elif ev == "on_chain_end":
+                        final_output = e.get("data")
+
+                # Emit final output
+                if final_output:
+                    out_text = final_output.get("output", "").get("output", "")
+                    q.put({"type": "final", "output": out_text})
+                else:
+                    q.put({"type": "error", "error": "No final output produced"})
+            except Exception as ex:
+                q.put({"type": "error", "error": str(ex)})
+            finally:
+                q.put(SENTINEL)
+
+        # Kick off the async runner inside the agent loop
+        asyncio.run_coroutine_threadsafe(_runner(), self._loop)
+
+        # Drain the queue and yield NDJSON
+        while True:
+            try:
+                item = q.get(timeout=300)
+            except Empty:
+                yield json.dumps({"type": "error", "error": "Stream timeout"}) + "\n"
+                break
+            if item is SENTINEL:
+                break
+            yield json.dumps(item) + "\n"
+
     def _run_loop_forever(self):
-        """
-        Creates event loop and maintains a persistent MCP connection.
-        """
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
@@ -187,14 +257,14 @@ class MCPAgentServer:
 
                         # Signal ready after first successful build
                         self._ready_evt.set()
-                        backoff = 1  # reset backoff after success
+                        backoff = 1
                         print("Agent ready!")
 
                         # Keep connection alive until stop or connection drops
                         while not self._stop_evt.is_set():
                             await asyncio.sleep(1)
                             # Connection will drop naturally if MCP server disconnects
-                            # The context managers will clean up and this loop will restart
+                            # The context manager will clean up and this loop will restart
 
             except Exception as e:
                 print(f"MCP connection failed, will retry: {e}")
@@ -217,7 +287,7 @@ class MCPAgentServer:
         )
         user_info = await manual_mcp_call(session, "atlassianUserInfo", {})
 
-        # Build LLMs
+        # Initialise LLMs
         router_llm = ChatGoogleGenerativeAI(
             model="gemini-2.5-flash-lite", temperature=0
         )
@@ -358,8 +428,8 @@ def health():
 @app.route("/mcp", methods=["POST"])
 def mcp():
     """
-    Process MCP requests using persistent connection.
-    Frontend guarantees sequential requests (no concurrency).
+    Stream MCP processing as NDJSON (newline-delimited JSON).
+    Each tool start event is yielded immediately, followed by a final output object.
     """
     data = request.get_json(force=True, silent=True) or {}
 
@@ -369,15 +439,23 @@ def mcp():
     if not user_input:
         return jsonify({"error": "Missing 'input'"}), 400
 
-    result = mcp_agent.submit(user_input, history)
-    status = 200 if result.get("ok", False) else 500
+    @stream_with_context
+    def generator():
+        for line in mcp_agent.stream(user_input, history):
+            try:
+                obj = json.loads(line)
+                if obj.get("type") == "final" and "output" in obj:
+                    # apply post-processing to final output only
+                    obj["output"] = replace_iso8601_with_relative(obj["output"])
+                    yield json.dumps(obj) + "\n"
+                else:
+                    yield line
+            except Exception:
+                # If a line wasn't JSON, just pass it through
+                yield line
 
-    if result.get("ok"):
-        output = {"output": result["output"]["output"]}
-        output["output"] = replace_iso8601_with_relative(output["output"])
-        return jsonify(output), status
-    else:
-        return jsonify({"error": result.get("error", "Unknown error")}), status
+    # NOTE: using application/json for compatibility; clients should parse NDJSON lines.
+    return Response(generator(), mimetype="application/json")
 
 
 if __name__ == "__main__":
