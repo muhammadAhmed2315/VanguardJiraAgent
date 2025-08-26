@@ -1,0 +1,30 @@
+[data-testid="stHeader"] {
+  background-color: #96151d;
+}
+
+[data-testid="stHeader"] * {
+  color: white !important;
+}
+
+.tool-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  background: #96151d;
+  color: #e0e0e0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 4px 0;
+  border: 1px solid #96151d;
+  word-break: break-word;
+}
+
+.tool-badge {
+  background: white;
+  color: black;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-right: 6px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
