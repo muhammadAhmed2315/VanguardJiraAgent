@@ -2,14 +2,11 @@ import json
 import time
 import asyncio
 import threading
-from queue import Queue, Empty
-from typing import Any, Dict, List, Optional, Iterator
-
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, Response, stream_with_context
-
+from queue import Queue, Empty
 from mcp.client.stdio import stdio_client
 from mcp import ClientSession, StdioServerParameters
+from typing import Any, Dict, List, Optional, Iterator
 
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -18,39 +15,14 @@ from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableBranch, RunnableLambda, RunnablePassthrough
 
-from AgentTools import MCPToolHandler
-from utility import replace_iso8601_with_relative
+from MCPToolHandler import MCPToolHandler
 from prompts import router_system_prompt, worker_system_prompt
 
-# ----- server setup -----
-
+# --- Load environment variables ---
 load_dotenv()
 
-REMOTE_URL = "https://mcp.atlassian.com/v1/sse"
 
-
-async def manual_mcp_call(
-    session: ClientSession, tool: str, args: Dict[str, Any] = {}
-) -> str:
-    """
-    Call an MCP tool via an existing ClientSession.
-
-    Args:
-        session: Active MCP client session.
-        tool: MCP tool name to invoke.
-        args: JSON-serializable arguments for the tool (defaults to empty dict).
-
-    Returns:
-        A JSON string with the tool result on success, or a JSON string of the form
-        {"error": "..."} if the call fails.
-    """
-    try:
-        return await session.call_tool(tool, args)
-    except Exception as e:
-        return json.dumps({"error": f"Error calling {tool}: {e}"})
-
-
-class MCPAgentServer:
+class MCPClient:
     """
     Maintains a persistent MCP connection and processes requests sequentially.
     Requires the frontend to ensure that only one request is sent at a time.
@@ -274,6 +246,25 @@ class MCPAgentServer:
                 time.sleep(min(backoff, 10))
                 backoff = min(backoff * 2, 30)
 
+    async def _manual_mcp_call(
+        self, session, tool: str, args: Dict[str, Any] = {}
+    ) -> str:
+        """
+        Call an MCP tool via an existing ClientSession.
+
+        Args:
+            tool: MCP tool name to invoke.
+            args: JSON-serializable arguments for the tool (defaults to empty dict).
+
+        Returns:
+            A JSON string with the tool result on success, or a JSON string of the form
+            {"error": "..."} if the call fails.
+        """
+        try:
+            return await session.call_tool(tool, args)
+        except Exception as e:
+            return json.dumps({"error": f"Error calling {tool}: {e}"})
+
     async def _build_agent_chain(self, session: ClientSession):
         """
         Build the complete agent chain using the MCP session.
@@ -282,10 +273,10 @@ class MCPAgentServer:
         tool_meta = await session.list_tools()
         tool_docs = tool_meta.model_dump_json()
 
-        resources = await manual_mcp_call(
+        resources = await self._manual_mcp_call(
             session, "getAccessibleAtlassianResources", {}
         )
-        user_info = await manual_mcp_call(session, "atlassianUserInfo", {})
+        user_info = await self._manual_mcp_call(session, "atlassianUserInfo", {})
 
         # Initialise LLMs
         router_llm = ChatGoogleGenerativeAI(
@@ -410,53 +401,3 @@ class MCPAgentServer:
 
         except Exception as e:
             return {"ok": False, "error": str(e)}
-
-
-# -------------------- Flask app --------------------
-
-app = Flask(__name__)
-mcp_agent = MCPAgentServer(REMOTE_URL)
-mcp_agent.start()
-
-
-@app.route("/health", methods=["GET"])
-def health():
-    """Health check endpoint."""
-    return jsonify({"status": "ok"}), 200
-
-
-@app.route("/mcp", methods=["POST"])
-def mcp():
-    """
-    Stream MCP processing as NDJSON (newline-delimited JSON).
-    Each tool start event is yielded immediately, followed by a final output object.
-    """
-    data = request.get_json(force=True, silent=True) or {}
-
-    user_input: str = data.get("input", "")
-    history: List[Dict[str, str]] = data.get("history", [])
-
-    if not user_input:
-        return jsonify({"error": "Missing 'input'"}), 400
-
-    @stream_with_context
-    def generator():
-        for line in mcp_agent.stream(user_input, history):
-            try:
-                obj = json.loads(line)
-                if obj.get("type") == "final" and "output" in obj:
-                    # apply post-processing to final output only
-                    obj["output"] = replace_iso8601_with_relative(obj["output"])
-                    yield json.dumps(obj) + "\n"
-                else:
-                    yield line
-            except Exception:
-                # If a line wasn't JSON, just pass it through
-                yield line
-
-    # NOTE: using application/json for compatibility; clients should parse NDJSON lines.
-    return Response(generator(), mimetype="application/json")
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=False)
