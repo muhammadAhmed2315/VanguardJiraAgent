@@ -1,7 +1,6 @@
 from PIL import Image
 import streamlit as st
 
-from constants import AI_ICON_FILE, STYLES_FILE, HUMAN_ICON
 from utils import (
     init_state,
     load_css,
@@ -9,6 +8,7 @@ from utils import (
     render_chat_history,
     send_request,
 )
+from constants import AI_ICON_FILE, STYLES_FILE, HUMAN_ICON
 
 
 # --- Page + state setup ---
@@ -52,7 +52,9 @@ if send:
                 with st.spinner("Thinking…"):
                     response = send_request(prompt, st.session_state.chat_history)
                     if isinstance(response, str):  # error
-                        final_text_placeholder.markdown(response)
+                        final_text_placeholder.markdown(
+                            response, unsafe_allow_html=True
+                        )
                         st.session_state.ai_history.append(
                             {"final_output": response, "tool_calls": []}
                         )

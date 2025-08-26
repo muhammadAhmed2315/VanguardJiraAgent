@@ -101,7 +101,7 @@ def send_request(prompt: str, chat_history: List[str]) -> requests.Response | st
             timeout=300,
         )
     except requests.RequestException as e:
-        return f"Request failed: {e}"
+        return '<span class="error-msg">Connection failed: Could not establish a connection to the server.</span>'
 
 
 def process_stream(
