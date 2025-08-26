@@ -1,4 +1,6 @@
+import html
 import json
+import logging
 import requests
 from PIL import Image
 import streamlit as st
@@ -6,7 +8,32 @@ from requests import Response
 from typing import Any, Dict, List, Tuple
 from streamlit.delta_generator import DeltaGenerator
 
-from constants import API_URL
+from constants import API_URL, DEFAULT_AI_ICON
+
+
+def render_error(msg: str) -> str:
+    """
+    Wraps an error message string in an HTML <span> element with the class
+    'error-msg'. This allows consistent styling of error messages in the UI.
+
+    Args:
+        msg: The error message text to be displayed.
+
+    Returns:
+        str: An HTML string containing the formatted error message.
+    """
+
+    return f'<span class="error-msg">{msg}</span>'
+
+
+def safe_load_image_icon(path: str, default=DEFAULT_AI_ICON) -> Image.Image | str:
+    try:
+        return Image.open(path)
+    except Exception as e:
+        logging.error(
+            f"Image icon at path {path} could not be loaded. Falling back to default icon. Error: {e}"
+        )
+        return default
 
 
 def render_tool_call_json(obj: Dict[str, Any]) -> str:
@@ -41,8 +68,13 @@ def load_css(css_file: str) -> None:
     Args:
         css_file: The path to the CSS file.
     """
-    with open(css_file) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    try:
+        with open(css_file) as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        logging.error(f"CSS stylesheet not found: {css_file}")
+    except Exception as e:
+        logging.error(f"Could not load stylesheet {css_file}: {e}")
 
 
 def init_state() -> None:
@@ -70,7 +102,10 @@ def render_chat_history(
         ai_icon: The avatar icon for AI messages. This should either be a string
             containing a single emoji, or a PIL.Image object.
     """
-    for human, ai in zip(st.session_state.human_history, st.session_state.ai_history):
+    for human, ai in zip(
+        st.session_state.get("human_history", []),
+        st.session_state.get("ai_history", []),
+    ):
         with st.chat_message("human", avatar=human_icon):
             st.markdown(human)
 
@@ -100,8 +135,14 @@ def send_request(prompt: str, chat_history: List[str]) -> requests.Response | st
             stream=True,
             timeout=300,
         )
+    except requests.Timeout:
+        return render_error("Timeout: The server took too long to respond.")
+    except requests.ConnectionError:
+        return render_error(
+            "Connection failed: Could not establish a connection to the server."
+        )
     except requests.RequestException as e:
-        return '<span class="error-msg">Connection failed: Could not establish a connection to the server.</span>'
+        return render_error("Network error: {html.escape(str(e))}")
 
 
 def process_stream(
@@ -127,34 +168,45 @@ def process_stream(
     rendered_tool_calls = []
     out = None
 
-    for raw in response.iter_lines(decode_unicode=True):
-        if not raw:
-            continue
+    try:
+        for raw in response.iter_lines(decode_unicode=True):
+            if not raw:
+                continue
 
-        try:
-            obj = json.loads(raw)
-        except json.JSONDecodeError:
-            rendered_tool_calls.append(f'<span class="tool-badge">raw</span>{raw}')
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                rendered_tool_calls.append(f'<span class="tool-badge">raw</span>{raw}')
+                tools_box.markdown(
+                    format_tool_calls(rendered_tool_calls), unsafe_allow_html=True
+                )
+                continue
+
+            et = obj.get("type")
+            if et == "tool_call":
+                rendered_tool_calls.append(render_tool_call_json(obj))
+            elif et == "final":
+                out = obj.get("output", "")
+                final_text_placeholder.markdown(out or "_(no output)_")
+            elif et == "error":
+                out = render_error(f"Error: {obj.get('error','Unknown error')}")
+                final_text_placeholder.markdown(out, unsafe_allow_html=True)
+            else:
+                rendered_tool_calls.append(render_tool_call_json(obj))
+
             tools_box.markdown(
                 format_tool_calls(rendered_tool_calls), unsafe_allow_html=True
             )
-            continue
-
-        et = obj.get("type")
-        if et == "tool_call":
-            rendered_tool_calls.append(render_tool_call_json(obj))
-        elif et == "final":
-            out = obj.get("output", "")
-            final_text_placeholder.markdown(out or "_(no output)_")
-        elif et == "error":
-            out = f"Error: {obj.get('error','Unknown error')}"
-            final_text_placeholder.markdown(out)
-        else:
-            rendered_tool_calls.append(render_tool_call_json(obj))
-
-        tools_box.markdown(
-            format_tool_calls(rendered_tool_calls), unsafe_allow_html=True
-        )
+    except requests.ConnectionError:
+        if out is None:
+            out = render_error("Connection lost while streaming.")
+            final_text_placeholder.markdown(out, unsafe_allow_html=True)
+    except requests.RequestException as e:
+        out = render_error(f"Stream error: {html.escape(str(e))}")
+        final_text_placeholder.markdown(out, unsafe_allow_html=True)
+    except Exception as e:
+        out = render_error(f"Unexpected error: {html.escape(str(e))}")
+        final_text_placeholder.markdown(out, unsafe_allow_html=True)
 
     return out or "No final output produced.", rendered_tool_calls
 

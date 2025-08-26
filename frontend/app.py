@@ -1,11 +1,12 @@
-from PIL import Image
 import streamlit as st
+from PIL import Image, UnidentifiedImageError
 
 from utils import (
     init_state,
     load_css,
     process_stream,
     render_chat_history,
+    safe_load_image_icon,
     send_request,
 )
 from constants import AI_ICON_FILE, STYLES_FILE, HUMAN_ICON
@@ -14,7 +15,7 @@ from constants import AI_ICON_FILE, STYLES_FILE, HUMAN_ICON
 # --- Page + state setup ---
 load_css(STYLES_FILE)
 
-ai_icon = Image.open(AI_ICON_FILE)
+ai_icon = safe_load_image_icon(AI_ICON_FILE)
 st.set_page_config(page_title="Vanguard Helper Agent")
 st.header("Vanguard Jira Agent")
 
