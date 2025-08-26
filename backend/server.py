@@ -1,13 +1,13 @@
 import json
 from typing import Dict, List
-from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response, stream_with_context
 
 from MCPClient import MCPClient
-from constants import REMOTE_MCP_SERVER_URL
 from utils import replace_iso8601_with_relative
 
 # -------------------- Flask app --------------------
+REMOTE_MCP_SERVER_URL = "https://mcp.atlassian.com/v1/sse"
+
 app = Flask(__name__)
 mcp_client = MCPClient(REMOTE_MCP_SERVER_URL)
 mcp_client.start()
