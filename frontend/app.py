@@ -1,5 +1,4 @@
 import streamlit as st
-from PIL import Image, UnidentifiedImageError
 
 from utils import (
     init_state,

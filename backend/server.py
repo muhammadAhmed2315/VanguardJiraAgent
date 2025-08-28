@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from MCPClient import MCPClient
 from utils import replace_iso8601_with_relative
 
+
 # -------------------- Flask app --------------------
 REMOTE_MCP_SERVER_URL = "https://mcp.atlassian.com/v1/sse"
 
@@ -40,11 +41,21 @@ def mcp():
             try:
                 obj = json.loads(line)
                 if obj.get("type") == "final" and "output" in obj:
-                    # apply post-processing to final output only
-                    obj["output"] = replace_iso8601_with_relative(obj["output"])
+                    out = obj["output"]
+                    if isinstance(out, str) and out.strip().startswith(
+                        '<span class="error-msg">'
+                    ):
+                        # Re-wrap using render_error so it’s consistently generated
+                        out = render_error(
+                            out.strip()
+                            .replace('<span class="error-msg">', "")
+                            .replace("</span>", "")
+                        )
+                    obj["output"] = replace_iso8601_with_relative(out)
                     yield json.dumps(obj) + "\n"
                 else:
                     yield line
+
             except Exception:
                 # If a line wasn't JSON, just pass it through
                 yield line

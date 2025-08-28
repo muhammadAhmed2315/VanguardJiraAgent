@@ -23,7 +23,7 @@ def render_error(msg: str) -> str:
         str: An HTML string containing the formatted error message.
     """
 
-    return f'<span class="error-msg">{msg}</span>'
+    return f'<span class="error-msg-FRONTEND">{msg}</span>'
 
 
 def safe_load_image_icon(path: str, default=DEFAULT_AI_ICON) -> Image.Image | str:
@@ -197,7 +197,9 @@ def process_stream(
                 rendered_tool_calls.append(render_tool_call_json(obj))
             elif et == "final":
                 out = obj.get("output", "")
-                final_text_placeholder.markdown(out or "_(no output)_")
+                final_text_placeholder.markdown(
+                    out or "_(no output)_", unsafe_allow_html=True
+                )
             elif et == "error":
                 out = render_error(f"Error: {obj.get('error','Unknown error')}")
                 final_text_placeholder.markdown(out, unsafe_allow_html=True)

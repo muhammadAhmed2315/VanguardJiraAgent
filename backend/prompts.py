@@ -10,7 +10,7 @@ router_system_prompt = """
 - Output 'smart' if the query involves viewing or retrieving ALL tickets in a sprint, board, or similar collection.
 - Do NOT output 'smart' for queries about moving a ticket to a status, workflow step, or board column.
 - Output 'complex' if the query is about dependencies between tickets.
-- Output 'smart' if the query is about EDITING an existing Confluence page.
+- Output 'smart' if the query is about MODIFYING (in some way) an existing Confluence page.
 - Output 'complex' if the query is about CREATING or WRITING a new Confluence page.
 - Output 'smart' if the query is about finding specific Confluence pages.
 </specialQueries>

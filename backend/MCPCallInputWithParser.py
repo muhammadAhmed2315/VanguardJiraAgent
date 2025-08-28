@@ -1,3 +1,4 @@
+import ast
 import json
 from typing import Any, Dict
 from pydantic import BaseModel, field_validator
@@ -13,9 +14,18 @@ class MCPCallInputWithParser(BaseModel):
     @classmethod
     def parse_json_string(cls, v: Any) -> Any:
         if isinstance(v, str):
-            # If the LLM provides a string, attempt to parse it as JSON
             stripped = v.strip()
             if stripped == "":
                 return {}
-            return json.loads(stripped)
+
+            # Try JSON first
+            try:
+                return json.loads(stripped)
+            except json.JSONDecodeError:
+                # Fallback: Python dict-style string
+                try:
+                    print("FALLING BACK")
+                    return ast.literal_eval(stripped)
+                except Exception:
+                    raise ValueError(f"Invalid arguments string: {stripped}")
         return v
