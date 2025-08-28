@@ -14,7 +14,8 @@ class MCPCallInputWithParser(BaseModel):
     def parse_json_string(cls, v: Any) -> Any:
         if isinstance(v, str):
             # If the LLM provides a string, attempt to parse it as JSON
-            if v.strip() == "":
+            stripped = v.strip()
+            if stripped == "":
                 return {}
-            return json.loads(v)
+            return json.loads(stripped)
         return v

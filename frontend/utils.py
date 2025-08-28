@@ -8,7 +8,7 @@ from requests import Response
 from typing import Any, Dict, List, Tuple
 from streamlit.delta_generator import DeltaGenerator
 
-from constants import API_URL, DEFAULT_AI_ICON
+from constants import API_URL, DEFAULT_AI_ICON, TOOL_NAME_HUMAN_READABLE
 
 
 def render_error(msg: str) -> str:
@@ -53,7 +53,7 @@ def render_tool_call_json(obj: Dict[str, Any]) -> str:
     elif obj["name"] == "mcp_call":
         tool_name = obj.get("args", {}).get("tool", "unknown tool")
         tool_args = obj.get("args", {}).get("arguments", "unknown arguments")
-        return f'<div class="tool-line">Calling tool: <span class="tool-badge">{tool_name}</span><br>With arguments:<br>{tool_args}</div>'
+        return f'<div class="tool-line">{TOOL_NAME_HUMAN_READABLE[tool_name]}</div>'
 
     else:
         tool_name = obj.get("args", {}).get("tool", "unknown tool")
@@ -90,6 +90,16 @@ def init_state() -> None:
             st.session_state[key] = val
 
 
+# --- state modifier functions ---
+def disable_submit_btn():
+    st.session_state.disabled_submit_btn = True
+
+
+def enable_submit_btn():
+    st.session_state.disabled_submit_btn = False
+    st.rerun()
+
+
 def render_chat_history(
     human_icon: Image.Image | str, ai_icon: Image.Image | str
 ) -> None:
@@ -111,7 +121,7 @@ def render_chat_history(
 
         with st.chat_message("ai", avatar=ai_icon):
             with st.expander("Tool calls"):
-                st.markdown("\n".join(ai["tool_calls"]), unsafe_allow_html=True)
+                st.markdown(format_tool_calls(ai["tool_calls"]), unsafe_allow_html=True)
             st.markdown(ai["final_output"])
 
 
@@ -222,4 +232,4 @@ def format_tool_calls(calls: List[str]) -> str:
         A single string with each tool call wrapped in a <div> element, separated by
             newline characters.
     """
-    return "\n".join([f'<div class="tool-line">{c}</div>' for c in calls])
+    return "\n".join(calls)

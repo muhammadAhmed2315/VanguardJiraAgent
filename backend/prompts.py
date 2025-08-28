@@ -6,10 +6,13 @@ router_system_prompt = """
 
 <specialQueries>
 - Output 'smart' if the query is about assigning a ticket to a PERSON (e.g., assigning a user or assignee).
-- Output 'smart' if the query is about assigning or updating STORY POINTS.
+- Output 'smart' if the query is about assigning, updating, or estimating STORY POINTS.
 - Output 'smart' if the query involves viewing or retrieving ALL tickets in a sprint, board, or similar collection.
 - Do NOT output 'smart' for queries about moving a ticket to a status, workflow step, or board column.
 - Output 'complex' if the query is about dependencies between tickets.
+- Output 'smart' if the query is about EDITING an existing Confluence page.
+- Output 'complex' if the query is about CREATING or WRITING a new Confluence page.
+- Output 'smart' if the query is about finding specific Confluence pages.
 </specialQueries>
 """
 
@@ -63,8 +66,15 @@ worker_system_prompt = """
   2. If no sufficiently relevant title is found, then fall back to searching within the **ticket summaries/descriptions**.
 - When building the search query, do not only look for exact words. Always expand the query to include different forms of the words (e.g., plural/singular, verb/noun/adjective forms, common synonyms).
 
-## Search for Confluence pages
+## Searching for Confluence pages
 - When building the search query, do not only look for exact words. Always expand the query to include different forms of the words (e.g., plural/singular, verb/noun/adjective forms, common synonyms).
+
+## Providing links for Jira and Confluence pages/issues
+- When asked to provide a link to a Jira issue or Confluence page, **always return the direct human-friendly link** that can be opened in the browser, not the raw REST API link.  
+- Do **not** return links to https://api.atlassian.com/... or any other API endpoint.  
+
+## Always Provide Links
+- Whenever a user asks you to find a specific Jira issue or Confluence page, you must **always include the direct link** to that issue or page in your response.  
 
 # Context
 - Here are the MCP tools that are available to you and their JSON schemas:

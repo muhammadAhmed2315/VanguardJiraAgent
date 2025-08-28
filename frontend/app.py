@@ -8,6 +8,8 @@ from utils import (
     render_chat_history,
     safe_load_image_icon,
     send_request,
+    disable_submit_btn,
+    enable_submit_btn,
 )
 from constants import AI_ICON_FILE, STYLES_FILE, HUMAN_ICON
 
@@ -33,7 +35,11 @@ with history_box:
 # --- Input form ---
 with input_box.form("prompt_form", clear_on_submit=True):
     prompt = st.text_area("Prompt", placeholder="Enter your prompt here…")
-    send = st.form_submit_button("Send", disabled=st.session_state.disabled_submit_btn)
+    send = st.form_submit_button(
+        "Send",
+        on_click=disable_submit_btn,
+        disabled=st.session_state.disabled_submit_btn,
+    )
 
 # --- Handle submission ---
 if send:
@@ -72,3 +78,4 @@ if send:
                                 {"role": "ai", "content": out},
                             ]
                         )
+                    enable_submit_btn()

@@ -1,3 +1,4 @@
+import logging
 from mcp import ClientSession
 from typing import Any, Dict, List
 from langchain_core.tools import StructuredTool
@@ -48,6 +49,7 @@ class MCPToolHandler:
         try:
             return await self.session.call_tool(tool, arguments)
         except Exception as e:
+            logging.error(f"MCP tool invocation failed: {e}")
             return f"MCP tool invocation failed: {e}"
 
     def get_list_tools_tool(self) -> StructuredTool:
