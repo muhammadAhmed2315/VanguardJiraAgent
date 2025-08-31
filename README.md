@@ -1,7 +1,6 @@
 # Vanguard Jira Agent
 
-An AI-powered assistant that connects to Atlassian Jira and Confluence via **Model Context Protocol (MCP)**.  
-It provides a conversational interface for interacting with Jira and Confluence pages/spaces using natural language.
+An AI-powered Proof of Concept application developed during my internship at Vanguard. It provides a conversational interface for interacting with Jira and Confluence pages using natural language, by making use of an Model Context Protocol (MCP) server.
 
 The system consists of:
 
